@@ -1,0 +1,1 @@
+python recipe_embeddings.py --load --pkl_path "../pkl_files/recipe_embeddings.pkl" --data_path "../data/RAW_recipes.csv"
