@@ -12,12 +12,13 @@ import pickle
 import sys
 import argparse
 from functools import reduce
+import datetime
 #HELPERS
-def read_data(path):
-    df = pd.read_csv(path)
+def read_data(raw_path, pp_path):
+    df = pd.read_csv(raw_path)
     df['ingredients'] = df['ingredients'].apply(ast.literal_eval)
     
-    PP_df = pd.read_csv('../data/PP_recipes.csv')
+    PP_df = pd.read_csv(pp_path)
     PP_df = PP_df[['id','techniques']]
 
     #use only recipes from the PP_recipes df, also take the techniques column from it. Dont use their tokenization though...
@@ -73,7 +74,9 @@ def get_recipe_embeddings(model, recipes, maxlen, output_dim):
 
     return recipe_embeddings
 
-def save_pkl(obj, path):
+def save_pkl(obj, path, ingr_embd_dim, min_count):
+    if(path == None):
+        path = "./pkl_files/{:%d%m%y}_{}_{}.pkl".format(datetime.datetime.now(), ingr_embd_dim, min_count)
     pickle_out = open(path, "wb")
     pickle.dump(obj, pickle_out)
     print('Saved ', path)
@@ -86,11 +89,11 @@ def load_pkl(path):
 
 def main(args):
     pkl_path = args.pkl_path
-    data_path = args.data_path
+    raw_path = args.raw_path
+    pp_path = args.pp_path
     ingr_embd_dim = int(args.ingr_embd_dim)
     min_count = int(args.min_count)
-
-    df = read_data(data_path)
+    df = read_data(raw_path, pp_path)
     recipes = df['ingredients']
 
     model = create_model(min_count=min_count, size=ingr_embd_dim)
@@ -118,12 +121,13 @@ def main(args):
     print(X.shape)
     print(y.shape)
 
-    save_pkl((df_filtered, X, y), pkl_path)
+    save_pkl((df_filtered, X, y), pkl_path, ingr_embd_dim, min_count)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--pkl_path', action='store', dest='pkl_path', help='path to pkl file')
-    parser.add_argument('-d', '--data_path', action='store', dest='data_path', help='path to data')
+    parser.add_argument('-rrp', '--RAW_recipes_path', action='store', dest='raw_path', help='path to data', default='./data/RAW_recipes.csv')
+    parser.add_argument('-ppp', '--pp_recipes_path', action='store', dest='pp_path', help='path to data', default='./data/PP_recipes.csv')
     parser.add_argument('-ied', '--ingr_embd_dim', action='store', dest='ingr_embd_dim', help='nr of dims for feature vectorss', default=50)
     parser.add_argument('-mc', '--min_count', action='store', dest='min_count', help='min_count', default=0)
     args = parser.parse_args()
