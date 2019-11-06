@@ -14,15 +14,21 @@ import argparse
 from functools import reduce
 import datetime
 #HELPERS
-def read_data(raw_path, pp_path):
-    df = pd.read_csv(raw_path)
-    df['ingredients'] = df['ingredients'].apply(ast.literal_eval)
-    
+def read_data(raw_path, pp_path, rip_path):
+    rip_df = pd.read_csv(rip_path)
+    rip_df = rip_df[['recipe_id', 'rating']]
+    rip_df = rip_df.groupby(['recipe_id']).mean()
+
+    raw_df = pd.read_csv(raw_path)
+    raw_df['ingredients'] = raw_df['ingredients'].apply(ast.literal_eval)
+
+    raw_df = pd.merge(raw_df, rip_df, left_on='id', right_on='recipe_id', how='left')
+ 
     PP_df = pd.read_csv(pp_path)
     PP_df = PP_df[['id','techniques']]
 
     #use only recipes from the PP_recipes df, also take the techniques column from it. Dont use their tokenization though...
-    df_merged = pd.merge(df, PP_df, left_on='id', right_on='id', how='right')
+    df_merged = pd.merge(raw_df, PP_df, left_on='id', right_on='id', how='right')
     return df_merged
 
 def create_model(min_count=1000, size=50):
@@ -60,13 +66,16 @@ def train_model(model, recipes):
 def get_recipe_embeddings(model, recipes, maxlen, output_dim):
 
     def embed_recipe(recipe, maxlen, model):
-        recipe_embedding = np.zeros(0)
         for i, ingredient in enumerate(recipe):
             word_vec = model.wv[ingredient]
-            recipe_embedding = np.concatenate((recipe_embedding, word_vec))
+            if(i == 0):
+                recipe_embedding = word_vec
+            else:
+                recipe_embedding = np.vstack((recipe_embedding, word_vec))
         #PAD
-        zeros_to_pad = output_dim * (maxlen - len(recipe))
-        recipe_embedding = np.pad(recipe_embedding, (0,zeros_to_pad), 'constant')
+        ingredients_to_pad = (maxlen - len(recipe))
+        for i in range(0, ingredients_to_pad):
+            recipe_embedding = np.vstack((recipe_embedding, np.zeros(output_dim)))
         return recipe_embedding
 
     #embed all ingredients in each recipe
@@ -91,11 +100,11 @@ def main(args):
     pkl_path = args.pkl_path
     raw_path = args.raw_path
     pp_path = args.pp_path
+    rip_path = args.rip_path
     ingr_embd_dim = int(args.ingr_embd_dim)
     min_count = int(args.min_count)
-    df = read_data(raw_path, pp_path)
+    df = read_data(raw_path, pp_path, rip_path)
     recipes = df['ingredients']
-
     model = create_model(min_count=min_count, size=ingr_embd_dim)
     vocab, vocab_set = create_vocab(model, recipes)
     recipes_keep_ids = filter_recipes(recipes, vocab_set)
@@ -110,25 +119,32 @@ def main(args):
 
     X_r = get_recipe_embeddings(model, filtered_recipes, maxlen, ingr_embd_dim)
     X_r = np.array(X_r)
-
+    #X_r = X_r.reshape(-1,1)
+    print(X_r[:5].shape)
     X_t = list(df_filtered['techniques'])
     X_t = list(map(ast.literal_eval, X_t))
     X_t = np.array(X_t)
+    print("abc__",X_t.shape)
+    #X_ratings = list(df_filtered['rating'])
+    #X_ratings = np.array(X_ratings)
+    #X_ratings = X_ratings.reshape(-1,1)
 
-    X = np.concatenate((X_r, X_t), axis=1)
+    #print(X_r.shape, X_t.shape, X_ratings.shape)
+    #X = np.concatenate((X_r, X_t, X_ratings), axis=1)
     y = np.array(df_filtered['minutes'])
 
-    print(X.shape)
+    print(X_r.shape)
     print(y.shape)
 
-    save_pkl((df_filtered, X, y), pkl_path, ingr_embd_dim, min_count)
+    save_pkl((df_filtered, X_r, y), pkl_path, ingr_embd_dim, min_count)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--pkl_path', action='store', dest='pkl_path', help='path to pkl file')
     parser.add_argument('-rrp', '--RAW_recipes_path', action='store', dest='raw_path', help='path to data', default='./data/RAW_recipes.csv')
+    parser.add_argument('-rip', '--RAW_interactions_path', action='store', dest='rip_path', help='path to data', default='./data/RAW_interactions.csv')
     parser.add_argument('-ppp', '--pp_recipes_path', action='store', dest='pp_path', help='path to data', default='./data/PP_recipes.csv')
-    parser.add_argument('-ied', '--ingr_embd_dim', action='store', dest='ingr_embd_dim', help='nr of dims for feature vectorss', default=50)
+    parser.add_argument('-ied', '--ingr_embd_dim', action='store', dest='ingr_embd_dim', help='nr of dims for feature vectors', default=50)
     parser.add_argument('-mc', '--min_count', action='store', dest='min_count', help='min_count', default=0)
     args = parser.parse_args()
 
