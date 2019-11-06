@@ -27,6 +27,8 @@ def read_data(raw_path, pp_path, rip_path):
     PP_df = pd.read_csv(pp_path)
     PP_df = PP_df[['id','techniques']]
 
+    PP_df['techniques'] = PP_df['techniques'].apply(ast.literal_eval)
+
     #use only recipes from the PP_recipes df, also take the techniques column from it. Dont use their tokenization though...
     df_merged = pd.merge(raw_df, PP_df, left_on='id', right_on='id', how='right')
     return df_merged
@@ -63,8 +65,7 @@ def create_vocab(model, recipes):
 def train_model(model, recipes):
     model.train(recipes, total_examples=model.corpus_count, epochs=30, report_delay=1)
 
-def get_recipe_embeddings(model, recipes, maxlen, output_dim):
-
+def get_recipe_embeddings(model, df_filtered, maxlen, output_dim):
     def embed_recipe(recipe, maxlen, model):
         for i, ingredient in enumerate(recipe):
             word_vec = model.wv[ingredient]
@@ -77,9 +78,16 @@ def get_recipe_embeddings(model, recipes, maxlen, output_dim):
         for i in range(0, ingredients_to_pad):
             recipe_embedding = np.vstack((recipe_embedding, np.zeros(output_dim)))
         return recipe_embedding
-        
+
     #embed all ingredients in each recipe
+    recipes = df_filtered['ingredients']
+    techniques = np.array(list(df_filtered['techniques']))
+    print(techniques)
+
     recipe_embeddings = list(map(lambda x : embed_recipe(x, maxlen, model), tqdm(recipes)))
+
+    for i in range(len(recipe_embeddings)):
+        recipe_embeddings[i]  = np.vstack((recipe_embeddings[i], techniques[i]))
 
     return recipe_embeddings
 
@@ -111,20 +119,19 @@ def main(args):
 
     #the filtered recipes are the recipes which have ingredients bigger than min_count
     df_filtered = df.iloc[recipes_keep_ids]
-    filtered_recipes = df_filtered['ingredients']
 
-    maxlen = max(list(filtered_recipes.apply(len)))
+    maxlen = max(list(df_filtered['ingredients'].apply(len)))
 
-    train_model(model, filtered_recipes)
+    train_model(model, df_filtered['ingredients'])
 
-    X_r = get_recipe_embeddings(model, filtered_recipes, maxlen, ingr_embd_dim)
+    X_r = get_recipe_embeddings(model, df_filtered, maxlen, ingr_embd_dim)
     X_r = np.array(X_r)
     #X_r = X_r.reshape(-1,1)
     print(X_r[:5].shape)
-    X_t = list(df_filtered['techniques'])
-    X_t = list(map(ast.literal_eval, X_t))
-    X_t = np.array(X_t)
-    print("abc__",X_t.shape)
+    #X_t = list(df_filtered['techniques'])
+    #X_t = list(map(ast.literal_eval, X_t))
+    #X_t = np.array(X_t)
+    #print("abc__",X_t.shape)
     #X_ratings = list(df_filtered['rating'])
     #X_ratings = np.array(X_ratings)
     #X_ratings = X_ratings.reshape(-1,1)
