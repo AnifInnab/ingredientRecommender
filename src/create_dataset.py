@@ -77,7 +77,7 @@ def get_recipe_embeddings(model, recipes, maxlen, output_dim):
         for i in range(0, ingredients_to_pad):
             recipe_embedding = np.vstack((recipe_embedding, np.zeros(output_dim)))
         return recipe_embedding
-
+        
     #embed all ingredients in each recipe
     recipe_embeddings = list(map(lambda x : embed_recipe(x, maxlen, model), tqdm(recipes)))
 
